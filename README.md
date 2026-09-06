@@ -13,6 +13,8 @@
 
 `config.env` 配置 Sony 内核源码、版本和工具链。设备使用 [LineageOS Sony SDM845 内核](https://github.com/LineageOS/android_kernel_sony_sdm845/tree/lineage-22.2) 的 `tama_aurora_defconfig`。KernelSU 内建于内核，启用该 fork 针对 Linux 4.9 的系统调用表 hook 模式，不再应用旧版官方 KernelSU 手动补丁。
 
+工作流启用并检查 `CONFIG_DEBUG_INFO_DWARF4=y`，保留调试信息，同时避免 Clang 19 默认生成的 DWARF 5 指令与 GCC 4.9 预编译工具链中的旧汇编器不兼容。
+
 ## 镜像处理
 
 `scripts/repack_boot.py` 使用 AOSP `unpack_bootimg.py` 和 `mkbootimg.py`，仅以编译得到的 `Image.gz-dtb` 替换内核。保留原镜像中的 recovery ramdisk、命令行、系统版本和安全补丁日期、加载地址及其他非内核数据，并在重新打包后逐项验证。

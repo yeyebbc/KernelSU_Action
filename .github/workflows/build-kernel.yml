@@ -151,6 +151,10 @@ jobs:
         ( cd "$KERNEL_DIR" && scripts/config --file out/.config \
             --set-str LOCALVERSION '-perf+' \
             --disable LOCALVERSION_AUTO )
+        # Clang 19 defaults to DWARF 5, which the GCC 4.9 prebuilts' gas
+        # cannot assemble. Keep debug info using the supported DWARF 4 format.
+        ( cd "$KERNEL_DIR" && scripts/config --file out/.config \
+            --enable DEBUG_INFO_DWARF4 )
         # KernelSU 4.9 recommended flags: tamper syscall table + LSM security hooks + KSU.
         for flag in $KSU_FLAGS; do
           ( cd "$KERNEL_DIR" && scripts/config --file out/.config --enable "$flag" )
@@ -164,6 +168,10 @@ jobs:
             LD="$LINKER" \
             LOCALVERSION= \
             olddefconfig )
+        grep -qx 'CONFIG_DEBUG_INFO_DWARF4=y' "$KERNEL_DIR/out/.config" || {
+          echo "ERROR: DWARF 4 is required by the legacy assembler" >&2
+          exit 1
+        }
         echo "--- KSU/LOCALVERSION lines in .config ---"
         grep -E "CONFIG_(KSU|LOCALVERSION)" "$KERNEL_DIR/out/.config" || true
 

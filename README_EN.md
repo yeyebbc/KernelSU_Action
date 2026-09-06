@@ -13,6 +13,8 @@ Builds a **boot.img** for the Sony Xperia XZ2 Premium **H8116** (`aurora`), runn
 
 `config.env` selects the Sony kernel source, revision and toolchain. The device configuration is `tama_aurora_defconfig` from [LineageOS's Sony SDM845 kernel](https://github.com/LineageOS/android_kernel_sony_sdm845/tree/lineage-22.2). KernelSU is built into the kernel with the fork's syscall-table hook mode for Linux 4.9; the old official KernelSU manual patches are not used.
 
+The workflow enables and checks `CONFIG_DEBUG_INFO_DWARF4=y`, retaining debug information while avoiding Clang 19's default DWARF 5 directives, which the legacy assembler in the GCC 4.9 prebuilts cannot parse.
+
 ## Image handling
 
 `scripts/repack_boot.py` uses AOSP `unpack_bootimg.py` and `mkbootimg.py` to replace only the kernel payload with the compiled `Image.gz-dtb`. It preserves the supplied boot image's recovery ramdisk, command line, OS/patch level, addresses and other non-kernel payloads. Packaging verifies these fields and payloads after rebuilding.
