@@ -266,3 +266,33 @@ jobs:
         name: h8116-lineage22-kernelsu-${{ github.run_number }}
         if-no-files-found: error
         path: kernel_workspace/dist/
+
+  release:
+    name: Publish H8116 release
+    if: always() && needs.build.result == 'success'
+    needs: build
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: h8116-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      # The build job downloads sources without needing a token.
+      # A release relies on GITHUB_TOKEN and cannot access workflow `secrets`.
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: h8116-lineage22-kernelsu-${{ github.run_number }}
+        path: dist
+
+    - name: Publish GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: h8116-${{ github.run_number }}
+        name: H8116 KernelSU ${{ github.run_number }}
+        generate_release_notes: false
+        body: |
+          KernelSU boot image for Sony Xperia XZ2 Premium (H8116), LineageOS 22 / Android 15.
+          Flash the boot image; no AnyKernel3 installer. Unlocked bootloader required.
+          On-device boot and KernelSU functionality are NOT verified.
+        files: dist/boot.img dist/dtbo.img dist/build-info.txt dist/config.env dist/kernel.config

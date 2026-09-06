@@ -8,7 +8,7 @@
 
 1. 将当前系统的 boot 镜像放在 `h8116-lineage/boot.img`，匹配的 DTBO 放在 `h8116-lineage/dtbo.img`。工作流直接使用仓库内的镜像，不下载其他设备的 boot 镜像。
 2. 将仓库和镜像推送至自己的 GitHub fork。在 **Actions** 中选择 H8116 构建工作流，点击 **Run workflow**。
-3. 构建成功后下载并解压镜像 artifact，取得 `boot.img`。同时提供原样复制的 `dtbo.img`、构建来源记录和内核配置。
+3. 构建成功后自动发布 GitHub **release**，标签为 `h8116-<run_number>`，包含 `boot.img`、原样复制的 `dtbo.img`、`build-info.txt`、`config.env` 和 `kernel.config`。原有运行 artifact 仍然保留。
 4. 安装 [backslashxx/KernelSU releases](https://github.com/backslashxx/KernelSU/releases) 中匹配的 Manager，不使用官方 KernelSU Manager。
 
 `config.env` 配置 Sony 内核源码、版本和工具链。设备使用 [LineageOS Sony SDM845 内核](https://github.com/LineageOS/android_kernel_sony_sdm845/tree/lineage-22.2) 的 `tama_aurora_defconfig`。KernelSU 内建于内核，启用该 fork 针对 Linux 4.9 的系统调用表 hook 模式，不再应用旧版官方 KernelSU 手动补丁。

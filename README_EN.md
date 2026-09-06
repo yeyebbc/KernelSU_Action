@@ -8,7 +8,7 @@ Builds a **boot.img** for the Sony Xperia XZ2 Premium **H8116** (`aurora`), runn
 
 1. Keep the boot image from your installed ROM at `h8116-lineage/boot.img` and its matching DTBO at `h8116-lineage/dtbo.img`. The checked-in images are the build inputs; no boot image is downloaded from another device.
 2. Push this repository, including those images, to your GitHub fork. Open **Actions**, select the H8116 build workflow, then **Run workflow**.
-3. Download the successful run's image artifact and extract `boot.img`. The artifact also contains the original, unchanged `dtbo.img` and build provenance/configuration.
+3. A successful run automatically publishes a GitHub **release** tagged `h8116-<run_number>`, containing `boot.img`, unchanged `dtbo.img`, `build-info.txt`, `config.env`, and `kernel.config`. The existing run artifact remains available.
 4. Install the matching Manager from [backslashxx/KernelSU releases](https://github.com/backslashxx/KernelSU/releases), not the official KernelSU Manager.
 
 `config.env` selects the Sony kernel source, revision and toolchain. The device configuration is `tama_aurora_defconfig` from [LineageOS's Sony SDM845 kernel](https://github.com/LineageOS/android_kernel_sony_sdm845/tree/lineage-22.2). KernelSU is built into the kernel with the fork's syscall-table hook mode for Linux 4.9; the old official KernelSU manual patches are not used.
