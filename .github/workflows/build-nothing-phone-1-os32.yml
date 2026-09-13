@@ -52,9 +52,27 @@ jobs:
     - name: Fetch AOSP clang r383902b1
       run: |
         set -euo pipefail
+        # Toolchain archives are large; retry and prove the gzip stream is
+        # complete before extracting. A truncated transfer otherwise only
+        # surfaces later as "unexpected end of file" from tar. The archive
+        # endpoint does not serve byte ranges, so each attempt starts over.
+        fetch_archive() {
+          local url="$1" dest="$2"
+          for attempt in 1 2 3 4 5; do
+            rm -f "$dest"
+            if curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$url" -o "$dest" \
+               && gzip -t "$dest"; then
+              return 0
+            fi
+            echo "incomplete archive (attempt $attempt): $url" >&2
+            sleep 10
+          done
+          echo "ERROR: could not download $url" >&2
+          return 1
+        }
         mkdir -p "$WS/clang-aosp"
-        curl -fsSL "$CLANG_SOURCE/+archive/refs/heads/$CLANG_BRANCH/$CLANG_RELEASE.tar.gz" \
-          -o "$WS/clang.tar.gz"
+        fetch_archive "$CLANG_SOURCE/+archive/refs/heads/$CLANG_BRANCH/$CLANG_RELEASE.tar.gz" \
+          "$WS/clang.tar.gz"
         tar -C "$WS/clang-aosp" -xzf "$WS/clang.tar.gz"
         rm -f "$WS/clang.tar.gz"
         "$WS/clang-aosp/bin/clang" --version
@@ -63,11 +81,27 @@ jobs:
     - name: Fetch AOSP GCC binutils
       run: |
         set -euo pipefail
+        # Same truncation risk as the clang archive: retry and validate the
+        # gzip stream before extracting.
+        fetch_archive() {
+          local url="$1" dest="$2"
+          for attempt in 1 2 3 4 5; do
+            rm -f "$dest"
+            if curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$url" -o "$dest" \
+               && gzip -t "$dest"; then
+              return 0
+            fi
+            echo "incomplete archive (attempt $attempt): $url" >&2
+            sleep 10
+          done
+          echo "ERROR: could not download $url" >&2
+          return 1
+        }
         mkdir -p "$WS/gcc-64" "$WS/gcc-32"
-        curl -fsSL "$GCC_64_SOURCE/+archive/refs/tags/$GCC_TAG.tar.gz" -o "$WS/gcc-64.tar.gz"
+        fetch_archive "$GCC_64_SOURCE/+archive/refs/tags/$GCC_TAG.tar.gz" "$WS/gcc-64.tar.gz"
         tar -C "$WS/gcc-64" -xzf "$WS/gcc-64.tar.gz"
         rm -f "$WS/gcc-64.tar.gz"
-        curl -fsSL "$GCC_32_SOURCE/+archive/refs/tags/$GCC_TAG.tar.gz" -o "$WS/gcc-32.tar.gz"
+        fetch_archive "$GCC_32_SOURCE/+archive/refs/tags/$GCC_TAG.tar.gz" "$WS/gcc-32.tar.gz"
         tar -C "$WS/gcc-32" -xzf "$WS/gcc-32.tar.gz"
         rm -f "$WS/gcc-32.tar.gz"
         test -x "$WS/gcc-64/bin/${GCC_64_PREFIX}elfedit"
