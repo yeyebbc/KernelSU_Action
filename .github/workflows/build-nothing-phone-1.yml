@@ -1,0 +1,269 @@
+name: Build Nothing Phone (1) OS 2.0.5
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build Nothing Phone (1) kernel by ${{ github.actor }}
+    runs-on: ubuntu-22.04
+    env:
+      WS: ${{ github.workspace }}/nothing_workspace
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Load build configuration
+      run: |
+        set -euo pipefail
+        . "$GITHUB_WORKSPACE/config-nothing-phone-1.env"
+        for v in KERNEL_SOURCE KERNEL_SOURCE_BRANCH KERNEL_SOURCE_COMMIT \
+                 KERNEL_IMAGE_NAME ARCH EXPECTED_KERNEL_RELEASE LOCALVERSION_SUFFIX \
+                 CLANG_SOURCE CLANG_BRANCH CLANG_RELEASE CLANG_TRIPLE \
+                 GCC_64_SOURCE GCC_32_SOURCE GCC_TAG GCC_64_PREFIX GCC_32_PREFIX \
+                 KSU_SOURCE KSU_COMMIT MKBOOTIMG_SOURCE AVB_SOURCE \
+                 MKBOOTIMG_COMMIT AVB_COMMIT SOURCE_BOOT_IMAGE SOURCE_DTBO_IMAGE \
+                 PACKAGING_TOOLS PACKAGING_AVBTOOL PACKAGING_KERNEL PACKAGING_OUTPUT; do
+          printf '%s=%s\n' "$v" "${!v}" >> "$GITHUB_ENV"
+        done
+        printf 'KSU_FLAGS=%s\n' "${KSU_FLAGS[*]}" >> "$GITHUB_ENV"
+        printf 'BUILD_TIME=%s\n' "$(TZ=UTC date +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"
+        echo "Kernel: $KERNEL_SOURCE @ $KERNEL_SOURCE_BRANCH ($KERNEL_SOURCE_COMMIT)"
+        echo "Output: $KERNEL_IMAGE_NAME; release $EXPECTED_KERNEL_RELEASE"
+        echo "Clang: $CLANG_RELEASE; KernelSU: $KSU_COMMIT"
+
+    - name: Install build packages
+      run: |
+        set -euo pipefail
+        sudo apt-get -qq update
+        sudo apt-get -qq install -y \
+          git make bc bison flex build-essential \
+          libssl-dev libelf-dev device-tree-compiler \
+          python3 python-is-python3 curl cpio rsync \
+          xz-utils zstd lz4 dwarves \
+          libtinfo5 libncurses5 libncurses-dev zlib1g-dev \
+          >/dev/null
+
+    - name: Fetch AOSP clang r383902b1
+      run: |
+        set -euo pipefail
+        mkdir -p "$WS/clang-aosp"
+        curl -fsSL "$CLANG_SOURCE/+archive/refs/heads/$CLANG_BRANCH/$CLANG_RELEASE.tar.gz" \
+          -o "$WS/clang.tar.gz"
+        tar -C "$WS/clang-aosp" -xzf "$WS/clang.tar.gz"
+        rm -f "$WS/clang.tar.gz"
+        "$WS/clang-aosp/bin/clang" --version
+        "$WS/clang-aosp/bin/ld.lld" --version
+
+    - name: Fetch AOSP GCC binutils
+      run: |
+        set -euo pipefail
+        mkdir -p "$WS/gcc-64" "$WS/gcc-32"
+        curl -fsSL "$GCC_64_SOURCE/+archive/refs/tags/$GCC_TAG.tar.gz" -o "$WS/gcc-64.tar.gz"
+        tar -C "$WS/gcc-64" -xzf "$WS/gcc-64.tar.gz"
+        rm -f "$WS/gcc-64.tar.gz"
+        curl -fsSL "$GCC_32_SOURCE/+archive/refs/tags/$GCC_TAG.tar.gz" -o "$WS/gcc-32.tar.gz"
+        tar -C "$WS/gcc-32" -xzf "$WS/gcc-32.tar.gz"
+        rm -f "$WS/gcc-32.tar.gz"
+        test -x "$WS/gcc-64/bin/${GCC_64_PREFIX}elfedit"
+        test -x "$WS/gcc-32/bin/${GCC_32_PREFIX}elfedit"
+
+    - name: Fetch Android 13 image tools
+      run: |
+        set -euo pipefail
+        mkdir -p "$WS/tools" "$WS/avb"
+        curl -fsSL "$MKBOOTIMG_SOURCE/+archive/$MKBOOTIMG_COMMIT.tar.gz" -o "$WS/tools.tar.gz"
+        tar -C "$WS/tools" -xzf "$WS/tools.tar.gz"
+        rm -f "$WS/tools.tar.gz"
+        curl -fsSL "$AVB_SOURCE/+archive/$AVB_COMMIT.tar.gz" -o "$WS/avb.tar.gz"
+        tar -C "$WS/avb" -xzf "$WS/avb.tar.gz"
+        rm -f "$WS/avb.tar.gz"
+        test -f "$WS/tools/mkbootimg.py"
+        test -f "$WS/tools/unpack_bootimg.py"
+        test -f "$WS/avb/avbtool.py"
+
+    - name: Fetch Nothing OS 2.0.5 kernel source
+      run: |
+        set -euo pipefail
+        git clone --single-branch -b "$KERNEL_SOURCE_BRANCH" "$KERNEL_SOURCE" "$WS/android-kernel"
+        git -C "$WS/android-kernel" checkout -q "$KERNEL_SOURCE_COMMIT"
+        test "$(git -C "$WS/android-kernel" rev-parse HEAD)" = "$KERNEL_SOURCE_COMMIT"
+        head -n5 "$WS/android-kernel/Makefile"
+
+    - name: Extract stock kernel configuration
+      run: |
+        set -euo pipefail
+        KERNEL_DIR="$WS/android-kernel"
+        mkdir -p "$WS/source-boot"
+        python3 "$WS/tools/unpack_bootimg.py" \
+          --boot_img "$GITHUB_WORKSPACE/$SOURCE_BOOT_IMAGE" \
+          --out "$WS/source-boot"
+        test -s "$WS/source-boot/kernel"
+        LC_ALL=C "$KERNEL_DIR/scripts/extract-ikconfig" "$WS/source-boot/kernel" > "$WS/stock.config"
+        test -s "$WS/stock.config"
+        grep -qx 'CONFIG_LOCALVERSION="-qgki"' "$WS/stock.config"
+        grep -qx 'CONFIG_IKCONFIG=y' "$WS/stock.config"
+        grep -qx 'CONFIG_THINLTO=y' "$WS/stock.config"
+        grep -qx 'CONFIG_CFI_CLANG=y' "$WS/stock.config"
+        grep -qx 'CONFIG_BUILD_ARM64_UNCOMPRESSED_KERNEL=y' "$WS/stock.config"
+        echo "Extracted $(wc -l < "$WS/stock.config") stock configuration lines."
+
+    - name: Setup KernelSU (backslashxx fork, pinned)
+      run: |
+        set -euo pipefail
+        KERNEL_DIR="$WS/android-kernel"
+        git clone "$KSU_SOURCE" "$KERNEL_DIR/KernelSU"
+        git -C "$KERNEL_DIR/KernelSU" show "$KSU_COMMIT:kernel/setup.sh" > "$WS/ksu-setup.sh"
+        ( cd "$KERNEL_DIR" && bash "$WS/ksu-setup.sh" "$KSU_COMMIT" )
+        ACTUAL_HEAD=$(git -C "$KERNEL_DIR/KernelSU" rev-parse HEAD)
+        test "$ACTUAL_HEAD" = "$KSU_COMMIT" || {
+          echo "ERROR: KernelSU HEAD=$ACTUAL_HEAD expected=$KSU_COMMIT" >&2
+          exit 1
+        }
+        grep -q 'kernelsu' "$KERNEL_DIR/drivers/Makefile"
+        grep -q 'drivers/kernelsu/Kconfig' "$KERNEL_DIR/drivers/Kconfig"
+
+    - name: Configure kernel from stock IKCONFIG
+      run: |
+        set -euo pipefail
+        KERNEL_DIR="$WS/android-kernel"
+        GCC_64="$WS/gcc-64/bin/${GCC_64_PREFIX}"
+        GCC_32="$WS/gcc-32/bin/${GCC_32_PREFIX}"
+        export PATH="$WS/clang-aosp/bin:$WS/gcc-64/bin:$WS/gcc-32/bin:$PATH"
+        mkdir -p "$KERNEL_DIR/out"
+        cp "$WS/stock.config" "$KERNEL_DIR/out/.config"
+        ( cd "$KERNEL_DIR" && scripts/config --file out/.config \
+            --set-str LOCALVERSION "$LOCALVERSION_SUFFIX" \
+            --disable LOCALVERSION_AUTO \
+            --disable KSU_TAMPER_SYSCALL_TABLE \
+            --disable KSU_KPROBES_KSUD )
+        for flag in $KSU_FLAGS; do
+          ( cd "$KERNEL_DIR" && scripts/config --file out/.config --enable "$flag" )
+        done
+        ( cd "$KERNEL_DIR" && make O=out ARCH="$ARCH" LLVM=1 LLVM_IAS=1 \
+            CLANG_TRIPLE="$CLANG_TRIPLE" \
+            CROSS_COMPILE="$GCC_64" CROSS_COMPILE_COMPAT="$GCC_32" \
+            LOCALVERSION= PYTHON=python3 olddefconfig )
+        grep -qx 'CONFIG_KSU=y' "$KERNEL_DIR/out/.config"
+        grep -qx 'CONFIG_KSU_HACK_ARM64_BRANCH_LINK=y' "$KERNEL_DIR/out/.config"
+        grep -qx 'CONFIG_KSU_LSM_SECURITY_HOOKS=y' "$KERNEL_DIR/out/.config"
+        grep -qx 'CONFIG_LOCALVERSION="-qgki-gcfce8884187a"' "$KERNEL_DIR/out/.config"
+        grep -qx '# CONFIG_LOCALVERSION_AUTO is not set' "$KERNEL_DIR/out/.config"
+
+    - name: Build raw ARM64 kernel image
+      run: |
+        set -euo pipefail
+        KERNEL_DIR="$WS/android-kernel"
+        GCC_64="$WS/gcc-64/bin/${GCC_64_PREFIX}"
+        GCC_32="$WS/gcc-32/bin/${GCC_32_PREFIX}"
+        export PATH="$WS/clang-aosp/bin:$WS/gcc-64/bin:$WS/gcc-32/bin:$PATH"
+        export KBUILD_BUILD_USER=github-actions
+        export KBUILD_BUILD_HOST=github-actions
+        ( cd "$KERNEL_DIR" && make -j"$(nproc)" O=out ARCH="$ARCH" \
+            LLVM=1 LLVM_IAS=1 CLANG_TRIPLE="$CLANG_TRIPLE" \
+            CROSS_COMPILE="$GCC_64" CROSS_COMPILE_COMPAT="$GCC_32" \
+            LOCALVERSION= PYTHON=python3 Image )
+
+    - name: Verify kernel output
+      run: |
+        set -euo pipefail
+        KERNEL_DIR="$WS/android-kernel"
+        IMG="$KERNEL_DIR/out/arch/${ARCH}/boot/${KERNEL_IMAGE_NAME}"
+        test -s "$IMG" || { echo "ERROR: $IMG missing or empty" >&2; exit 1; }
+        RELEASE=$(cat "$KERNEL_DIR/out/include/config/kernel.release")
+        echo "Kernel release: $RELEASE"
+        test "$RELEASE" = "$EXPECTED_KERNEL_RELEASE" || {
+          echo "ERROR: release '$RELEASE' != '$EXPECTED_KERNEL_RELEASE'" >&2
+          exit 1
+        }
+        grep -qx 'CONFIG_KSU=y' "$KERNEL_DIR/out/.config"
+        grep -qx 'CONFIG_KSU_HACK_ARM64_BRANCH_LINK=y' "$KERNEL_DIR/out/.config"
+        grep -qx 'CONFIG_KSU_LSM_SECURITY_HOOKS=y' "$KERNEL_DIR/out/.config"
+        echo "Image: $IMG ($(stat -c%s "$IMG") bytes)"
+
+    - name: Package Nothing OS boot image
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_WORKSPACE"
+        mkdir -p "$WS/dist"
+        cp "$SOURCE_DTBO_IMAGE" "$WS/dist/dtbo.img"
+        cmp "$SOURCE_DTBO_IMAGE" "$WS/dist/dtbo.img"
+        python3 scripts/repack_boot.py \
+          --tools "$GITHUB_WORKSPACE/$PACKAGING_TOOLS" \
+          --avbtool "$GITHUB_WORKSPACE/$PACKAGING_AVBTOOL" \
+          --source "$SOURCE_BOOT_IMAGE" \
+          --kernel "$GITHUB_WORKSPACE/$PACKAGING_KERNEL" \
+          --output "$GITHUB_WORKSPACE/$PACKAGING_OUTPUT"
+        test -s "$WS/dist/boot.img"
+        echo "boot.img: $(stat -c%s "$WS/dist/boot.img") bytes"
+        echo "dtbo.img: $(stat -c%s "$WS/dist/dtbo.img") bytes"
+
+    - name: Record build provenance
+      run: |
+        set -euo pipefail
+        KERNEL_DIR="$WS/android-kernel"
+        {
+          echo "build_time=$BUILD_TIME"
+          echo "device=Nothing Phone (1) (Spacewar)"
+          echo "rom=Nothing OS 2.0.5 / Android 13"
+          echo "kernel_source=$KERNEL_SOURCE"
+          echo "kernel_branch=$KERNEL_SOURCE_BRANCH"
+          echo "kernel_commit=$KERNEL_SOURCE_COMMIT"
+          echo "kernel_release=$(cat "$KERNEL_DIR/out/include/config/kernel.release")"
+          echo "stock_release_suffix_source=not present in published NothingOSS history"
+          echo "clang=$CLANG_RELEASE@$CLANG_BRANCH"
+          echo "gcc_tag=$GCC_TAG"
+          echo "ksu_source=$KSU_SOURCE"
+          echo "ksu_commit=$(git -C "$KERNEL_DIR/KernelSU" rev-parse HEAD)"
+          echo "mkbootimg_commit=$MKBOOTIMG_COMMIT"
+          echo "avb_commit=$AVB_COMMIT"
+          echo "source_boot_sha256=$(sha256sum "$GITHUB_WORKSPACE/$SOURCE_BOOT_IMAGE" | cut -d' ' -f1)"
+          echo "source_dtbo_sha256=$(sha256sum "$GITHUB_WORKSPACE/$SOURCE_DTBO_IMAGE" | cut -d' ' -f1)"
+        } > "$WS/dist/build-info.txt"
+        cp "$GITHUB_WORKSPACE/config-nothing-phone-1.env" "$WS/dist/config.env"
+        cp "$KERNEL_DIR/out/.config" "$WS/dist/kernel.config"
+
+    - name: Upload Nothing Phone (1) images and provenance
+      uses: actions/upload-artifact@v4
+      with:
+        name: nothing-phone-1-os-2.0.5-${{ github.run_number }}
+        if-no-files-found: error
+        path: nothing_workspace/dist/
+
+  release:
+    name: Publish Nothing Phone (1) release
+    if: always() && needs.build.result == 'success'
+    needs: build
+    runs-on: ubuntu-22.04
+    concurrency:
+      group: nothing-phone-1-os-2.0.5-release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: nothing-phone-1-os-2.0.5-${{ github.run_number }}
+        path: dist
+
+    - name: Publish GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: nothing-phone-1-os-2.0.5-${{ github.run_number }}
+        name: Nothing Phone (1) OS 2.0.5
+        generate_release_notes: false
+        body: |
+          KernelSU boot image for Nothing Phone (1), Nothing OS 2.0.5 / Android 13.
+          Built from NothingOSS OS 2.0.5 source; matching release text does not prove stock module compatibility.
+          Unlocked bootloader required. On-device boot and KernelSU functionality are NOT verified.
+        files: |
+          dist/boot.img
+          dist/dtbo.img
+          dist/build-info.txt
+          dist/config.env
+          dist/kernel.config

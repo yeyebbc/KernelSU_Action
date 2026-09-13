@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
-"""Replace the H8116 boot kernel and rebuild its unsigned AVB hash footer.
+"""Replace an Android boot kernel and rebuild its unsigned AVB hash footer.
 
-Requires an unlocked bootloader and a compatible installed LineageOS build.
-The original recovery ramdisk, header metadata and non-kernel payloads survive.
+Requires an unlocked bootloader and a compatible installed ROM. The source
+ramdisk, header metadata, AVB properties, and non-kernel payloads survive.
 """
 
 import argparse
 import hashlib
 from pathlib import Path
 import shlex
-import struct
 import subprocess
 import sys
 import tempfile
 
-PARTITION_SIZE = 64 * 1024 * 1024
 PAYLOADS = {"--kernel", "--ramdisk", "--second", "--recovery_dtbo", "--dtb"}
 
 
@@ -47,11 +45,10 @@ def repack(args):
     if output in (source, kernel):
         raise ValueError("output must not overwrite an input")
     with source.open("rb") as stream:
-        header = stream.read(1648)
-    if (len(header) != 1648 or header[:8] != b"ANDROID!"
-            or struct.unpack_from("<II", header, 36) != (4096, 1)
-            or source.stat().st_size != PARTITION_SIZE):
-        raise ValueError("expected the H8116 64 MiB, 4096-page boot-header-v1 image")
+        magic = stream.read(8)
+    partition_size = source.stat().st_size
+    if magic != b"ANDROID!" or partition_size == 0 or partition_size % 4096:
+        raise ValueError("expected a page-aligned Android boot partition image")
     if kernel.stat().st_size == 0:
         raise ValueError("kernel image is empty")
 
@@ -75,14 +72,16 @@ def repack(args):
         temp = Path(temp)
         original = unpack(tools, source, temp / "original")
         if "--kernel" not in original or "--ramdisk" not in original:
-            raise ValueError("source must contain kernel and recovery ramdisk")
+            raise ValueError("source must contain kernel and ramdisk")
+        if original.get("--header_version") not in {"1", "3"}:
+            raise ValueError("only Android boot header versions 1 and 3 are supported")
         replaced = dict(original, **{"--kernel": str(kernel)})
         fresh = temp / "boot.img"
         run(tools / "mkbootimg.py",
             *(arg for pair in replaced.items() for arg in pair), "--output", fresh)
         # avbtool also enforces the space reserved for vbmeta and the footer.
         run(avbtool, "add_hash_footer", "--image", fresh,
-            "--partition_name", "boot", "--partition_size", PARTITION_SIZE,
+            "--partition_name", "boot", "--partition_size", partition_size,
             "--algorithm", "NONE", "--hash_algorithm", "sha256", *props)
         run(avbtool, "verify_image", "--image", fresh)
         rebuilt = unpack(tools, fresh, temp / "rebuilt")
@@ -95,10 +94,10 @@ def repack(args):
                     raise ValueError(f"repacked payload differs: {key}")
             elif value != rebuilt[key]:
                 raise ValueError(f"repacked boot metadata differs: {key}")
-        if fresh.stat().st_size != PARTITION_SIZE:
+        if fresh.stat().st_size != partition_size:
             raise ValueError("repacked image has incorrect partition size")
         fresh.replace(output)
-    print(f"Verified boot image: {output} ({PARTITION_SIZE} bytes)")
+    print(f"Verified boot image: {output} ({partition_size} bytes)")
 
 
 def main():
