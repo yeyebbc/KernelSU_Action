@@ -6,6 +6,7 @@
 
 - Sony Xperia XZ2 Premium H8116（`aurora`）：LineageOS 22 / Android 15，`4.9.337-perf+`。
 - Nothing Phone (1)（`Spacewar`）：Nothing OS 2.0.5 / Android 13，`5.4.210-qgki-gcfce8884187a`。
+- Nothing Phone (1)（`Spacewar`）：Nothing OS 3.2（Spacewar-V3.2-260206-1016），`5.4.289-qgki-g49c0dcb3dc63`。
 
 ## 工作流
 
@@ -17,13 +18,17 @@
 
 **Build Nothing Phone (1) OS 2.0.5** 工作流使用 `nothing-1-2.0.5/boot.img`、原样复制的 `nothing-1-2.0.5/dtbo.img` 和 `config-nothing-phone-1.env`。它从提供的 boot 镜像提取原厂 QGKI 配置，使用 NothingOSS 发布的 OS 2.0.5 源码构建原始 ARM64 `Image`，并启用 KernelSU ARM64 branch-link 和 LSM hook。
 
-每次 Nothing 构建成功后，自动发布标题为 **Nothing Phone (1) OS 2.0.5** 的 release，包含 `boot.img`、`dtbo.img`、`build-info.txt`、`config.env` 和 `kernel.config`。应安装 [backslashxx/KernelSU releases](https://github.com/backslashxx/KernelSU/releases) 中匹配的 Manager，而非官方 KernelSU Manager。
+### Nothing Phone (1) — Nothing OS 3.2
 
-原厂 Nothing 内核后缀 `gcfce8884187a` 不对应 NothingOSS 公共仓库中的提交。工作流保留要求的 release 字符串，但 `build-info.txt` 记录实际使用的公开源码提交；版本字符串一致不能证明 vendor 模块兼容。
+**Build Nothing Phone (1) OS 3.2** 工作流使用 `nothing-1-3.2-260206/boot.img`、原样复制的 `nothing-1-3.2-260206/dtbo.img` 和 `config-nothing-phone-1-os32.env`。它使用 `sm7325/v/mr` 分支上固定到 OS 3.2 `Spacewar-V3.2-260206-1016` 合并提交的源码构建原始 ARM64 `Image`，采用与 OS 2.0.5 工作流相同的原厂配置提取和 KernelSU hook。
+
+每次 Nothing 构建成功后，自动发布标题为 **Nothing Phone (1) OS 2.0.5** 或 **Nothing Phone (1) OS 3.2** 的 release，包含 `boot.img`、`dtbo.img`、`build-info.txt`、`config.env` 和 `kernel.config`。应安装 [backslashxx/KernelSU releases](https://github.com/backslashxx/KernelSU/releases) 中匹配的 Manager，而非官方 KernelSU Manager。
+
+原厂 Nothing 内核后缀 `gcfce8884187a` 和 `g49c0dcb3dc63` 均不对应 NothingOSS 公共仓库中的提交。工作流保留要求的 release 字符串，但 `build-info.txt` 记录实际使用的公开源码提交；版本字符串一致不能证明 vendor 模块兼容。
 
 ## 镜像处理
 
-`scripts/repack_boot.py` 仅替换内核 payload，保留 ramdisk、boot header 元数据、AVB 属性和其他非内核 payload。它支持提供的 H8116 header-v1 镜像和 Nothing header-v3 镜像，重新生成无签名 AVB 哈希 footer，验证所有保留字段与 payload，并拒绝超过原 boot 分区容量的输出。
+`scripts/repack_boot.py` 仅替换内核 payload，保留 ramdisk、boot header 元数据、AVB 属性和其他非内核 payload。它支持提供的 H8116 header-v1 镜像和两个 Nothing header-v3 镜像，重新生成无签名 AVB 哈希 footer，验证所有保留字段与 payload，并拒绝超过原 boot 分区容量的输出。
 
 独立的 `dtbo.img` 会被复制并校验为完全不变；它不由任何内核构建生成。不要仅因 release 中包含它而刷入。
 
@@ -40,6 +45,7 @@
 
 - [Sony aurora 设备配置](https://github.com/LineageOS/android_device_sony_aurora/tree/lineage-22.2)
 - [NothingOSS Phone (1) 内核](https://github.com/NothingOSS/android_kernel_msm-5.4_nothing_sm7325/tree/sm7325/t)
+- [NothingOSS Phone (1) 内核（OS 3.x MR 分支）](https://github.com/NothingOSS/android_kernel_msm-5.4_nothing_sm7325/tree/sm7325/v/mr)
 - [Sony tama 公共配置](https://github.com/LineageOS/android_device_sony_tama-common/tree/lineage-22.2)
 - [backslashxx KernelSU](https://github.com/backslashxx/KernelSU)
 - [AOSP mkbootimg](https://android.googlesource.com/platform/system/tools/mkbootimg/)
