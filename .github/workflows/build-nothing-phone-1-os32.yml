@@ -170,6 +170,7 @@ jobs:
           echo "ERROR: kernel UAPI is not v$EXPECTED_KSU_UAPI_VERSION" >&2
           exit 1
         }
+        echo "KernelSU UAPI version verified: v$EXPECTED_KSU_UAPI_VERSION"
 
     - name: Configure kernel from stock IKCONFIG
       run: |
@@ -310,3 +311,4 @@ jobs:
           dist/build-info.txt
           dist/config.env
           dist/kernel.config
+        fail_on_unmatched_files: true

@@ -137,6 +137,7 @@ jobs:
           echo "ERROR: kernel UAPI is not v$EXPECTED_KSU_UAPI_VERSION" >&2
           exit 1
         }
+        echo "KernelSU UAPI version verified: v$EXPECTED_KSU_UAPI_VERSION"
 
     - name: Configure kernel (.config)
       run: |
@@ -302,4 +303,10 @@ jobs:
           KernelSU boot image for Sony Xperia XZ2 Premium (H8116), LineageOS 22 / Android 15.
           Flash the boot image; no AnyKernel3 installer. Unlocked bootloader required.
           On-device boot and KernelSU functionality are NOT verified.
-        files: dist/boot.img dist/dtbo.img dist/build-info.txt dist/config.env dist/kernel.config
+        files: |
+          dist/boot.img
+          dist/dtbo.img
+          dist/build-info.txt
+          dist/config.env
+          dist/kernel.config
+        fail_on_unmatched_files: true
