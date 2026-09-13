@@ -26,6 +26,14 @@ Each successful Nothing build publishes a release titled **Nothing Phone (1) OS 
 
 The stock Nothing kernel suffixes `gcfce8884187a` and `g49c0dcb3dc63` are not commits in the published NothingOSS repository. The workflows retain the requested release strings, but `build-info.txt` records the actual public source commits; matching text alone does not establish vendor-module compatibility.
 
+## KernelSU and Manager compatibility
+
+The kernels are built from [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) release tag **v3.3.0-28**, whose kernel reports UAPI version **4**.
+
+The Manager compares its own UAPI version against the kernel's and shows **"Kernel update required"** whenever the kernel's is lower, regardless of the app version. Install the matching **v3.3.0-28** Manager APK (`KernelSU_v3.3.0-28_32629-release.apk`), or a newer one only after rebuilding the kernel from a KernelSU revision with the same or higher UAPI version.
+
+A kernel built from an older KernelSU revision reports UAPI v3 and will always show that message: the kernel is out of date, not the app. Each workflow asserts the pinned revision's `kernel/include/uapi/supercall.h` reports the expected UAPI version and fails the build otherwise.
+
 ## Image handling
 
 `scripts/repack_boot.py` replaces only the kernel payload while preserving the supplied ramdisk, boot-header metadata, AVB properties, and non-kernel payloads. It supports the supplied H8116 header-v1 image and both Nothing header-v3 images, rebuilds their unsigned AVB hash footers, verifies every preserved field and payload, and rejects output that cannot fit the original boot partition.

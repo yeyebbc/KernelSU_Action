@@ -26,7 +26,8 @@ jobs:
                  KERNEL_IMAGE_NAME ARCH EXPECTED_KERNEL_RELEASE LOCALVERSION_SUFFIX \
                  CLANG_SOURCE CLANG_BRANCH CLANG_RELEASE CLANG_TRIPLE \
                  GCC_64_SOURCE GCC_32_SOURCE GCC_TAG GCC_64_PREFIX GCC_32_PREFIX \
-                 KSU_SOURCE KSU_COMMIT MKBOOTIMG_SOURCE AVB_SOURCE \
+                 KSU_SOURCE KSU_COMMIT EXPECTED_KSU_UAPI_VERSION \
+                 MKBOOTIMG_SOURCE AVB_SOURCE \
                  MKBOOTIMG_COMMIT AVB_COMMIT SOURCE_BOOT_IMAGE SOURCE_DTBO_IMAGE \
                  PACKAGING_TOOLS PACKAGING_AVBTOOL PACKAGING_KERNEL PACKAGING_OUTPUT; do
           printf '%s=%s\n' "$v" "${!v}" >> "$GITHUB_ENV"
@@ -127,6 +128,13 @@ jobs:
         }
         grep -q 'kernelsu' "$KERNEL_DIR/drivers/Makefile"
         grep -q 'drivers/kernelsu/Kconfig' "$KERNEL_DIR/drivers/Kconfig"
+        # The Manager refuses a kernel whose UAPI version predates its own and
+        # reports "Kernel update required", so the built UAPI must match.
+        grep -qx "#define KERNEL_SU_UAPI_VERSION $EXPECTED_KSU_UAPI_VERSION" \
+          "$KERNEL_DIR/KernelSU/kernel/include/uapi/supercall.h" || {
+          echo "ERROR: kernel UAPI is not v$EXPECTED_KSU_UAPI_VERSION" >&2
+          exit 1
+        }
 
     - name: Configure kernel from stock IKCONFIG
       run: |

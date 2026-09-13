@@ -26,6 +26,14 @@
 
 原厂 Nothing 内核后缀 `gcfce8884187a` 和 `g49c0dcb3dc63` 均不对应 NothingOSS 公共仓库中的提交。工作流保留要求的 release 字符串，但 `build-info.txt` 记录实际使用的公开源码提交；版本字符串一致不能证明 vendor 模块兼容。
 
+## KernelSU 与 Manager 兼容性
+
+内核基于 [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) 的 **v3.3.0-28** release tag 构建，其内核报告的 UAPI 版本为 **4**。
+
+Manager 会比较自身与内核的 UAPI 版本，只要内核更低就会显示 **"Kernel update required"**，与 app 版本号无关。请安装匹配的 **v3.3.0-28** Manager APK（`KernelSU_v3.3.0-28_32629-release.apk`）；如需使用更新的 Manager，必须先用 UAPI 版本相同或更高的 KernelSU 修订重新构建内核。
+
+使用更旧 KernelSU 修订构建的内核报告 UAPI v3，会始终显示该提示：过时的是内核而不是 app。每个工作流都会校验所固定修订的 `kernel/include/uapi/supercall.h` 是否报告预期 UAPI 版本，不符则构建失败。
+
 ## 镜像处理
 
 `scripts/repack_boot.py` 仅替换内核 payload，保留 ramdisk、boot header 元数据、AVB 属性和其他非内核 payload。它支持提供的 H8116 header-v1 镜像和两个 Nothing header-v3 镜像，重新生成无签名 AVB 哈希 footer，验证所有保留字段与 payload，并拒绝超过原 boot 分区容量的输出。

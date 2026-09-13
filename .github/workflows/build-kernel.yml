@@ -30,7 +30,7 @@ jobs:
                  KERNEL_CONFIG KERNEL_IMAGE_NAME ARCH EXPECTED_KERNEL_RELEASE \
                  CLANG_SOURCE CLANG_BRANCH CLANG_RELEASE CLANG_TRIPLE LINKER \
                  GCC_64_SOURCE GCC_32_SOURCE GCC_TAG GCC_64_PREFIX GCC_32_PREFIX \
-                 KSU_SOURCE KSU_COMMIT \
+                 KSU_SOURCE KSU_COMMIT EXPECTED_KSU_UAPI_VERSION \
                  MKBOOTIMG_SOURCE AVB_SOURCE TOOLS_BRANCH MKBOOTIMG_COMMIT AVB_COMMIT \
                  SOURCE_BOOT_IMAGE SOURCE_DTBO_IMAGE \
                  PACKAGING_TOOLS PACKAGING_AVBTOOL PACKAGING_KERNEL PACKAGING_OUTPUT; do
@@ -130,6 +130,13 @@ jobs:
         # Verify the hook-mode wiring the fork expects for 4.9.
         grep -q "kernelsu" "$KERNEL_DIR/drivers/Makefile" || { echo "kernelsu not in drivers/Makefile" >&2; exit 1; }
         grep -q "drivers/kernelsu/Kconfig" "$KERNEL_DIR/drivers/Kconfig" || { echo "kernelsu Kconfig not sourced" >&2; exit 1; }
+        # The Manager refuses a kernel whose UAPI version predates its own and
+        # reports "Kernel update required", so the built UAPI must match.
+        grep -qx "#define KERNEL_SU_UAPI_VERSION $EXPECTED_KSU_UAPI_VERSION" \
+          "$KERNEL_DIR/KernelSU/kernel/include/uapi/supercall.h" || {
+          echo "ERROR: kernel UAPI is not v$EXPECTED_KSU_UAPI_VERSION" >&2
+          exit 1
+        }
 
     - name: Configure kernel (.config)
       run: |
